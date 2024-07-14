@@ -181,12 +181,13 @@ def check_follow_up(prompt, tool_choice=None, model=st.session_state["openai_mod
 with st.sidebar:
     st.markdown("# ✍️Logg.it")
     st.markdown("✨Your *personal* journal copilot.")
-    st.markdown("The conversation is reset everytime the system thinks a task has been completed. The context shall persist to the LLM as long as it thinks it needs follow-up information, post which the tokens shall be discarded (marked with a *Context cleared* notification).")
-    st.markdown("Start typing your journal items and the bot will auto-categorise them into the following categories:")
+    st.markdown("The conversation is reset everytime the system thinks a **task has been completed**. The context shall persist to the LLM as long as it thinks it **needs follow-up information**, post which the tokens shall be discarded (marked with a *Context cleared* notification).")
+    st.markdown("Start typing your journal items and the bot will **auto-categorise** them into the following categories:")
     st.markdown("""
     - Shopping list
     - To-do list
 """)
+    st.markdown("Supported operations: `add new items`, `remove items`, `show lists`")
     st.markdown("There is support for combining requests as well. For example:")
     st.markdown("`Add bread to my shopping list and show all lists`")
     st.markdown("will perform both actions in a single prompt!")
