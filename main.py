@@ -233,7 +233,7 @@ if prompt:
 
         if (response.choices[0].finish_reason == 'tool_calls'):
             queryCompleteStatus = {}
-            
+
             print(f"received {len(response.choices[0].message.tool_calls)} tool_calls")
             for i in range(len(response.choices[0].message.tool_calls)):
                 fx = response.choices[0].message.tool_calls[i].function
@@ -257,7 +257,7 @@ if prompt:
             try:
                 queryCompleteStatus = json.loads(checkFollowUp.choices[0].message.tool_calls[0].function.arguments)
             except:
-                queryCompleteStatus["status"] == "followup"
+                queryCompleteStatus["status"] = "followup"
 
             print(queryCompleteStatus)
 
