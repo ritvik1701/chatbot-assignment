@@ -187,6 +187,8 @@ with st.sidebar:
     - Shopping list
     - To-do list
 """)
+    st.markdown("There is support for combining requests as well. For example:")
+    st.markdown("`Add bread to my shopping list and show all lists` will perform both actions in a single prompt.")
 
 # Restore current session
 if "messages" not in st.session_state:
