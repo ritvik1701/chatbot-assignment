@@ -2,7 +2,6 @@ import json
 import streamlit as st
 from openai import OpenAI
 from tenacity import retry, wait_random_exponential, stop_after_attempt
-from functions import *
 from colorama import Fore
 
 # ------------------- INITIALISATION -----------------------
