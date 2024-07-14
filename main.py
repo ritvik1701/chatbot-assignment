@@ -250,12 +250,18 @@ if prompt:
             response = chat_completion_request(st.session_state.messages)
             st.session_state.messages.append(response.choices[0].message)
             st.session_state.messagesStore.append(response.choices[0].message)
+            
+            checkFollowUp = check_follow_up(response.choices[0].message.content)
+            try:
+                queryCompleteStatus = json.loads(checkFollowUp.choices[0].message.tool_calls[0].function.arguments)
+            except:
+                queryCompleteStatus = {}
+                queryCompleteStatus["status"] == "followup"
+                
+            print(queryCompleteStatus)
 
         st.markdown(response.choices[0].message.content)
 
-        response = check_follow_up(response.choices[0].message.content)
-        queryCompleteStatus = json.loads(response.choices[0].message.tool_calls[0].function.arguments)
-        print(queryCompleteStatus)
 
     if queryCompleteStatus["status"] == "success":
         print(Fore.RED + "context has been reset, chat history cleared")
