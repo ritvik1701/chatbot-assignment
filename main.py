@@ -225,6 +225,7 @@ if prompt:
         st.markdown(prompt)
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.session_state.messagesStore.append({"role": "user", "content": prompt})
+    queryCompleteStatus = {}
 
     with st.chat_message("assistant"):
         response = chat_completion_request(st.session_state.messages, tools=type_of_request)
@@ -232,7 +233,6 @@ if prompt:
         st.session_state.messagesStore.append(response.choices[0].message)
 
         if (response.choices[0].finish_reason == 'tool_calls'):
-            queryCompleteStatus = {}
 
             print(f"received {len(response.choices[0].message.tool_calls)} tool_calls")
             for i in range(len(response.choices[0].message.tool_calls)):
