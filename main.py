@@ -6,6 +6,7 @@ from colorama import Fore
 
 # ------------------- INITIALISATION -----------------------
 
+# Functions to call based on tool_call reply from GPT
 def getExistingInformation(db, list_name):
     if list_name not in db:
         return f'[], show this as an empty markdown table, with the heading center aligned. Table has only one column: {list_name}'
@@ -144,6 +145,7 @@ client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = 'gpt-4o'
 
+# Normal call to ask GPT to complete the chat based on existing messages
 @retry(wait=wait_random_exponential(multiplier=1, max=40), stop=stop_after_attempt(3))
 def chat_completion_request(messages, tools=None, tool_choice=None, model=st.session_state["openai_model"]):
     try:
@@ -160,6 +162,7 @@ def chat_completion_request(messages, tools=None, tool_choice=None, model=st.ses
         return e
     
 
+# Call to GPT for checking if it expects a follow up or not based on the current messages
 @retry(wait=wait_random_exponential(multiplier=1, max=40), stop=stop_after_attempt(3))
 def check_follow_up(prompt, tool_choice=None, model=st.session_state["openai_model"]):
     try:
@@ -193,12 +196,15 @@ with st.sidebar:
     st.markdown("will perform both actions in a single prompt!")
 
 # Restore current session
+# Messages is the context that goes to GPT
 if "messages" not in st.session_state:
     st.session_state.messages = [system_prompt]
 
+# MessagesStore is to show the chat in the UI locally, not sent to GPT
 if "messagesStore" not in st.session_state:
     st.session_state.messagesStore = [system_prompt]
 
+# Print the messages in the chatbox
 for message in st.session_state.messagesStore:
     role = ""
     content = ""
@@ -210,6 +216,7 @@ for message in st.session_state.messagesStore:
         role = message.role
         content = message.content
 
+    # Notification is the role for "Context cleared" message
     if role == "notification":
         st.markdown(content)
     elif role != "system" and role != "tool" and content != None:
@@ -225,25 +232,29 @@ if "db" not in st.session_state:
 prompt = st.chat_input("What would you like to record today?")
 
 if prompt:
+    # Show the new prompt in the chatbox
     with st.chat_message("user"):
         st.markdown(prompt)
+    # Store the prompt as "user" in context and local messageStore
     st.session_state.messages.append({"role": "user", "content": prompt})
     st.session_state.messagesStore.append({"role": "user", "content": prompt})
     queryCompleteStatus = {}
 
     with st.chat_message("assistant"):
+        # Ask GPT to respond to "user" message and store the reply
         response = chat_completion_request(st.session_state.messages, tools=type_of_request)
         st.session_state.messages.append(response.choices[0].message)
         st.session_state.messagesStore.append(response.choices[0].message)
 
         if (response.choices[0].finish_reason == 'tool_calls'):
-
+            # GPT deemed the query as a tool call and returned the tool to call
             print(f"received {len(response.choices[0].message.tool_calls)} tool_calls")
             for i in range(len(response.choices[0].message.tool_calls)):
                 fx = response.choices[0].message.tool_calls[i].function
                 tool_call_id = response.choices[0].message.tool_calls[i].id
                 args = json.loads(fx.arguments)
 
+                # Execute the tool asked by GPT
                 if (fx.name == 'get_existing_information'):
                     result = getExistingInformation(st.session_state.db, args["list_name"])
                 elif (fx.name == 'add_new_information'):
@@ -251,15 +262,19 @@ if prompt:
                 elif (fx.name == "remove_information"):
                     result = removeInformation(st.session_state.db, args["list_name"], args["item"])
                 
+                # GPT requires a tool response for each tool call it makes, so add that to the context
                 st.session_state.messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": fx.name, "content": result})
             print(st.session_state.db)
+
+            # Send the tool output to GPT to generate the next message to be shown to user
             response = chat_completion_request(st.session_state.messages)
             st.session_state.messages.append(response.choices[0].message)
             st.session_state.messagesStore.append(response.choices[0].message)
             
-
+        # Show the response to the user
         st.markdown(response.choices[0].message.content)
 
+        # Check if the last response is expecting a follow up, eg: incomplete user requests that need more info
         checkFollowUp = check_follow_up(response.choices[0].message.content)
         try:
             queryCompleteStatus = json.loads(checkFollowUp.choices[0].message.tool_calls[0].function.arguments)
@@ -269,9 +284,12 @@ if prompt:
         print(queryCompleteStatus)
 
     if "status" in queryCompleteStatus and queryCompleteStatus["status"] == "success":
+        # GPT thinks that there is no follow up required, so reset the context
         print(Fore.RED + "context has been reset, chat history cleared")
         print(Fore.RESET)
+        # messages will now only have the system prompt, and has removed any chat history
         st.session_state.messages = [system_prompt]
         st.markdown("*Context cleared...*")
+        # Log the event in the local messageStore to show to the user in the chatbox
         st.session_state.messagesStore.append({"role": "notification", "content": "*Context cleared...*"})
         
