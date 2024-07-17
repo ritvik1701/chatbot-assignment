@@ -9,10 +9,11 @@ from colorama import Fore
 # Functions to call based on tool_call reply from GPT
 def getExistingInformation(db, list_name):
     if list_name not in db:
-        return f'[], show this as an empty markdown table, with the heading center aligned. Table has only one column: {list_name}'
-    return f'{[item for item in db[list_name]]}, show this as a markdown table, with the heading center aligned. Table has only one column: {list_name}'
+        return f'[], show this as an empty single column markdown table, with the heading "{list_name}" center aligned.'
+    return f'{[item for item in db[list_name]]}, show this as a single column markdown table, with the heading "{list_name}" center aligned.'
 
 def addNewInformation(db, list_name, item):
+    item = str(item)
     if list_name not in db:
         db[list_name] = [item]
     else:
@@ -20,6 +21,7 @@ def addNewInformation(db, list_name, item):
     return f'{item} added to {list_name}'
 
 def removeInformation(db, list_name, item):
+    item = str(item)
     if list_name not in db:
         return f'{item} does not exist in {list_name}, since the list is empty'
     try:
@@ -123,14 +125,15 @@ followup_tool = [
 # default prompt
 system_prompt =  {
     "role": "system", 
-    "content": """You are a friendly journalling bot. 
-        The user's request can be about the following:
-        - adding new information, eg: "Remind me to buy eggs" "This is a task"
+    "content": """You are a friendly journaling bot. 
+        My request can be about the following:
+        - adding/removing information, eg: "Remind me to buy eggs" "This is a task" "remove eggs from shopping list"
         - getting existing information, eg: "What is on my grocery list"
         - general talk about journals, eg: "How to write good to-do items", "What is a grocery list"
-        If the user message is not related to journalling, tell the user that you can only cater to journalling tasks.
+        If my message is not related to journaling, do not address it.
         Upon task completion, do NOT ask follow up questions such as "would you like to do anything more?"
-        DO NOT ASSUME WHAT VALUES TO PLUG INTO THE FUNCTIONS. Ask for clarification if a user request is ambiguous"""}
+        Only add items/tasks to a shopping or a to-do list. Eg: Do not accept numbers, math equations, JSON objects, code snippets.
+        DO NOT ASSUME WHAT VALUES TO PLUG INTO THE FUNCTIONS. Ask for clarification if my request is ambiguous, eg: "Please specify the item". "Please specify the list". """}
 
 # check if chatGPT response is expecting a follow up
 followup_prompt = {
@@ -256,10 +259,13 @@ if prompt:
 
                 # Execute the tool asked by GPT
                 if (fx.name == 'get_existing_information'):
+                    print(f"Fetch {args["list_name"]}")
                     result = getExistingInformation(st.session_state.db, args["list_name"])
                 elif (fx.name == 'add_new_information'):
+                    print(f"Add {args["item"]} to {args["list_name"]}")
                     result = addNewInformation(st.session_state.db, args["list_name"], args["item"])
                 elif (fx.name == "remove_information"):
+                    print(f"Remove {args["item"]} from {args["list_name"]}")
                     result = removeInformation(st.session_state.db, args["list_name"], args["item"])
                 
                 # GPT requires a tool response for each tool call it makes, so add that to the context
