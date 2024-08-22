@@ -1,6 +1,6 @@
 import json
 import streamlit as st
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from colorama import Fore
 
@@ -142,8 +142,26 @@ followup_prompt = {
 }
 
 
+# ------------------- STREAMLIT -----------------------
+
+with st.sidebar:
+    st.markdown("# ✍️Logg.it")
+    st.markdown("✨Your *personal* journal copilot.")
+    openaikey = st.text_input("Enter OpenAI API key for GPT-4o")
+    st.markdown("The conversation is reset everytime the system thinks a **task has been completed**. The context shall persist to the LLM as long as it thinks it **needs follow-up information**, post which the tokens shall be discarded (marked with a *Context cleared* notification).")
+    st.markdown("Start typing your journal items and the bot will **auto-categorise** them into the following categories:")
+    st.markdown("""
+    - Shopping list
+    - To-do list
+""")
+    st.markdown("Supported operations: `add new items`, `remove items`, `show lists`")
+    st.markdown("There is support for combining requests as well. For example:")
+    st.markdown("`Add bread to my shopping list and show all lists`")
+    st.markdown("will perform both actions in a single prompt!")
+
+
 # init openAI
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+client = OpenAI(api_key=openaikey)
 
 if "openai_model" not in st.session_state:
     st.session_state["openai_model"] = 'gpt-4o'
@@ -159,11 +177,10 @@ def chat_completion_request(messages, tools=None, tool_choice=None, model=st.ses
             tool_choice=tool_choice,
         )
         return response
-    except Exception as e:
+    except AuthenticationError as e:
         print("Unable to generate ChatCompletion response")
-        print(f"Exception: {e}")
-        return e
-    
+        print(f"Exception {type(e)}: {e}")
+        return e    
 
 # Call to GPT for checking if it expects a follow up or not based on the current messages
 @retry(wait=wait_random_exponential(multiplier=1, max=40), stop=stop_after_attempt(3))
@@ -180,23 +197,6 @@ def check_follow_up(prompt, tool_choice=None, model=st.session_state["openai_mod
         print("Unable to generate ChatCompletion response")
         print(f"Exception: {e}")
         return e
-
-
-# ------------------- STREAMLIT -----------------------
-
-with st.sidebar:
-    st.markdown("# ✍️Logg.it")
-    st.markdown("✨Your *personal* journal copilot.")
-    st.markdown("The conversation is reset everytime the system thinks a **task has been completed**. The context shall persist to the LLM as long as it thinks it **needs follow-up information**, post which the tokens shall be discarded (marked with a *Context cleared* notification).")
-    st.markdown("Start typing your journal items and the bot will **auto-categorise** them into the following categories:")
-    st.markdown("""
-    - Shopping list
-    - To-do list
-""")
-    st.markdown("Supported operations: `add new items`, `remove items`, `show lists`")
-    st.markdown("There is support for combining requests as well. For example:")
-    st.markdown("`Add bread to my shopping list and show all lists`")
-    st.markdown("will perform both actions in a single prompt!")
 
 # Restore current session
 # Messages is the context that goes to GPT
@@ -246,56 +246,60 @@ if prompt:
     with st.chat_message("assistant"):
         # Ask GPT to respond to "user" message and store the reply
         response = chat_completion_request(st.session_state.messages, tools=type_of_request)
-        st.session_state.messages.append(response.choices[0].message)
-        st.session_state.messagesStore.append(response.choices[0].message)
-
-        if (response.choices[0].finish_reason == 'tool_calls'):
-            # GPT deemed the query as a tool call and returned the tool to call
-            print(f"received {len(response.choices[0].message.tool_calls)} tool_calls")
-            for i in range(len(response.choices[0].message.tool_calls)):
-                fx = response.choices[0].message.tool_calls[i].function
-                tool_call_id = response.choices[0].message.tool_calls[i].id
-                args = json.loads(fx.arguments)
-
-                # Execute the tool asked by GPT
-                if (fx.name == 'get_existing_information'):
-                    print(f"Fetch {args["list_name"]}")
-                    result = getExistingInformation(st.session_state.db, args["list_name"])
-                elif (fx.name == 'add_new_information'):
-                    print(f"Add {args["item"]} to {args["list_name"]}")
-                    result = addNewInformation(st.session_state.db, args["list_name"], args["item"])
-                elif (fx.name == "remove_information"):
-                    print(f"Remove {args["item"]} from {args["list_name"]}")
-                    result = removeInformation(st.session_state.db, args["list_name"], args["item"])
-                
-                # GPT requires a tool response for each tool call it makes, so add that to the context
-                st.session_state.messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": fx.name, "content": result})
-            print(st.session_state.db)
-
-            # Send the tool output to GPT to generate the next message to be shown to user
-            response = chat_completion_request(st.session_state.messages)
+        if type(response) != AuthenticationError:
             st.session_state.messages.append(response.choices[0].message)
             st.session_state.messagesStore.append(response.choices[0].message)
-            
-        # Show the response to the user
-        st.markdown(response.choices[0].message.content)
 
-        # Check if the last response is expecting a follow up, eg: incomplete user requests that need more info
-        checkFollowUp = check_follow_up(response.choices[0].message.content)
-        try:
-            queryCompleteStatus = json.loads(checkFollowUp.choices[0].message.tool_calls[0].function.arguments)
-        except:
-            queryCompleteStatus["status"] = "followup"
+            if (response.choices[0].finish_reason == 'tool_calls'):
+                # GPT deemed the query as a tool call and returned the tool to call
+                print(f"received {len(response.choices[0].message.tool_calls)} tool_calls")
+                for i in range(len(response.choices[0].message.tool_calls)):
+                    fx = response.choices[0].message.tool_calls[i].function
+                    tool_call_id = response.choices[0].message.tool_calls[i].id
+                    args = json.loads(fx.arguments)
 
-        print(queryCompleteStatus)
+                    # Execute the tool asked by GPT
+                    if (fx.name == 'get_existing_information'):
+                        print(f"Fetch {args["list_name"]}")
+                        result = getExistingInformation(st.session_state.db, args["list_name"])
+                    elif (fx.name == 'add_new_information'):
+                        print(f"Add {args["item"]} to {args["list_name"]}")
+                        result = addNewInformation(st.session_state.db, args["list_name"], args["item"])
+                    elif (fx.name == "remove_information"):
+                        print(f"Remove {args["item"]} from {args["list_name"]}")
+                        result = removeInformation(st.session_state.db, args["list_name"], args["item"])
+                    
+                    # GPT requires a tool response for each tool call it makes, so add that to the context
+                    st.session_state.messages.append({"role": "tool", "tool_call_id": tool_call_id, "name": fx.name, "content": result})
+                print(st.session_state.db)
 
-    if "status" in queryCompleteStatus and queryCompleteStatus["status"] == "success":
-        # GPT thinks that there is no follow up required, so reset the context
-        print(Fore.RED + "context has been reset, chat history cleared")
-        print(Fore.RESET)
-        # messages will now only have the system prompt, and has removed any chat history
-        st.session_state.messages = [system_prompt]
-        st.markdown("*Context cleared...*")
-        # Log the event in the local messageStore to show to the user in the chatbox
-        st.session_state.messagesStore.append({"role": "notification", "content": "*Context cleared...*"})
+                # Send the tool output to GPT to generate the next message to be shown to user
+                response = chat_completion_request(st.session_state.messages)
+                st.session_state.messages.append(response.choices[0].message)
+                st.session_state.messagesStore.append(response.choices[0].message)
+                
+            # Show the response to the user
+            st.markdown(response.choices[0].message.content)
+
+            # Check if the last response is expecting a follow up, eg: incomplete user requests that need more info
+            checkFollowUp = check_follow_up(response.choices[0].message.content)
+            try:
+                queryCompleteStatus = json.loads(checkFollowUp.choices[0].message.tool_calls[0].function.arguments)
+            except:
+                queryCompleteStatus["status"] = "followup"
+
+            print(queryCompleteStatus)
+
+        else:
+            st.markdown("The openAI key seems to be invalid. Enter a valid key to continue!")
+
+        if "status" in queryCompleteStatus and queryCompleteStatus["status"] == "success":
+            # GPT thinks that there is no follow up required, so reset the context
+            print(Fore.RED + "context has been reset, chat history cleared")
+            print(Fore.RESET)
+            # messages will now only have the system prompt, and has removed any chat history
+            st.session_state.messages = [system_prompt]
+            st.markdown("*Context cleared...*")
+            # Log the event in the local messageStore to show to the user in the chatbox
+            st.session_state.messagesStore.append({"role": "notification", "content": "*Context cleared...*"})
         
